@@ -5,7 +5,7 @@ import pandas as pd
 from pandas import DataFrame
 from time import sleep
 
-%matplotlib inline
+# %matplotlib inline
 
 session = requests.Session()
 header = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*,q=0.8",
