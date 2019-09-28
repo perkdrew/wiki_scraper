@@ -1,40 +1,100 @@
+import json
+import threading
+import time
 from bs4 import BeautifulSoup
+from urllib.request import urlopen
 import requests
-from datetime import datetime
-import pandas as pd 
-from pandas import DataFrame
-from time import sleep
+import lxml
+import schedule
 
-%matplotlib inline
+class wikipediaPage:
+    name = ''
+    link = ''
+    nodes = []
+    group = 1
 
-session = requests.Session()
-header = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*,q=0.8",
-          "Accept-Language": "en-US",
-          "Connection": "keep-alive",
-          "Referrer": "https://www.google.com/",
-          "User-Agent": "Chrome 75 on mac0S (Mojave)"}
+data = {}
+data['nodes'] = []
+data['links'] = []
+currentNodes = 0
+maxNodes = 100
+termine = False
 
-# The URL we are visiting
-url = "https://www.goodreads.com/list/show/264.Books_That_Everyone_Should_Read_At_Least_Once"
-page = session.get(url, headers=header).text
-nobelList = BeautifulSoup(page)
+initialUrl = "https://https://en.wikipedia.org/wiki/List_of_Nobel_laureates"
 
-nobelListTable = nobelList.find("table", {"class": ["wikitable","sortable"]})
+def scrape(aUrl):
+    global currentNodes
+    currentNodes = currentNodes + 1
+    page = requests.get(aUrl).text
+    soup = BeautifulSoup(page, 'lxml')
+    newPage = wikipediaPage()
+    newPage.link = aUrl
+    newPage.name = soup.find('h1').text
+    pageLinks = soup.find('div',id="mw-content-text").find_all('a', limit=40)
+    pageHrefs = list(set(list( map( getLink, pageLinks))))
+    filteredPageHrefs = list(set(list(filter( lambda s: s!=None ,pageHrefs))))
+    newPage.nodes = filteredPageHrefs
+    global termine
+    if not termine:
+        toAddNodes = list( map( lambda x: addNode(x,newPage.link), newPage.nodes ))
+        explore = list(map(lambda x: addThread(x), newPage.nodes))
+    elif threading.activeCount() < 3:
+        writeJSON()
 
-links = dict()
-for node in nobelListTable.findAll("td"): # Will contain names and links
-    if node.a != None and node.a.attrs["href"][0:6] == "/wiki/": # Avoids bad links
-        links[node.a.contents[0]] = node.a.attrs["href"] # Name: Link format
+def addThread(urlToScrape):
+    global maxNodes
+    if currentNodes < maxNodes:
+        if threading.activeCount()<20000:
+            print( currentNodes, maxNodes, "page to scrape: " , urlToScrape)
+            ts = threading.Thread(target=scrape, args=[urlToScrape])
+            ts.start()
+    else:
+        global termine
+        termine = True
 
-datadict = dict()
-for name, link in links.items():
-    sleep(10)
-    print("Fetching: " + name)
-    person_page = session.get(baseurl + links[name], headers=header).text
-    ppbsObj = BeautifulSoup(person_page)
-    bday_span != None:
-    try:
         
 
+def addInicio():
+    data['nodes'].append({
+        'id': "INICIO",
+        'group': 1
+    })
+
+def addNode(newNodeId, father):
+    data['nodes'].append({
+        'id': newNodeId,
+        'group': 1
+    })
+    data['links'].append({
+        'source': father,
+        'target': newNodeId,
+        'value': 1
+    })
+
+def getLink(a):
+    if a.get("href") != None and a.get("href").startswith("/wiki/") and not a.get("href").endswith(".jpg" or ".svg" or ".jpeg"):
+        return str("http://wikipedia.org" + a.get("href"))
+
+def writeJSON():
+    with open('file.json', 'w') as outfile:
+        json.dump(data, outfile)
+    outfile.close()
+
+def log():
+    print("number of active threads: ", threading.activeCount())
+    print("time: ", time.clock())
+    print(termine)
 
 
+addInicio()
+addNode(initialUrl, "INICIO")
+scrape(initialUrl)
+
+
+schedule.every(1).seconds.do(log)
+
+while True:
+    schedule.run_pending()
+
+tsc = threading.Thread(target=scrape, args=[initialUrl])
+tsc.start()
